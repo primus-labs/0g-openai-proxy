@@ -1,0 +1,49 @@
+# Template/reference config. The actual config is embedded in docker-compose.yml via Base64.
+# To update: 1) Edit this file 2) Run: base64 -i config.testnet.yml
+# 3) Set BROKER_CONFIG env or replace the default in docker-compose.yml
+allowOrigins:
+  - '*'
+contractAddress: 0xa79F4c8311FF93C06b8CfB403690cc987c93F91E
+database:
+  provider: root:123456@tcp(mysql:3306)/provider?parseTime=true
+event:
+  providerAddr: :8088
+interval:
+  autoSettleBufferTime: 60
+  forceSettlementProcessor: 600
+  settlementProcessor: 300
+service:
+  servingUrl: https://fe354a5e9d577f8fc6916a320026f9ec62ec9cda-80.dstack-pha-prod5.phala.network
+  targetUrl: http://openai-proxy-service:8080
+  inputPrice: 900000000000
+  outputPrice: 150000000000
+  type: chatbot
+  model: qwen/qwen-2.5-7b-instruct
+  verifiability: TeeML
+  targetTeeAddress: 0xb8f026D941A59Ffb7ADaeD3e52d0c3404966f275
+  targetSeparated: false
+  verifierUrl: https://github.com/Dstack-TEE/dstack/releases/tag/verifier-v0.5.4
+networks:
+  ethereum0g:
+    url: https://evmrpc-testnet.0g.ai
+    chainID: 16602
+    privateKeys:
+      -
+    transactionLimit: 5000000
+    gasEstimationBuffer: 100000
+monitor:
+  eventAddress: 0g-serving-provider-event:3081
+chatCacheExpiration: 20m
+logger:
+  format: text
+  level: info
+  path: /var/log/inference/inference.log
+  rotationCount: 7
+logPaths:
+  brokerLogDir: /var/log/inference
+  eventLogDir: /var/log/event
+controller:
+  enable: true
+  adminAddresses:
+    - 0xb8f026D941A59Ffb7ADaeD3e52d0c3404966f275
+  image: ghcr.io/0gfoundation/0g-serving-broker@sha256:6c0cea3093b8cfa27a15002351b7d819dc2f648ef9f3be0c5d2a2e1f7582c818
