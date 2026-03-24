@@ -2,7 +2,7 @@ services:
   config-init:
     image: alpine:3.18
     environment:
-      - BROKER_CONFIG=
+      - BROKER_CONFIG=${BROKER_CONFIG}
     volumes:
       - broker-config:/out
     command: sh -c 'echo "$$BROKER_CONFIG" | base64 -d > /out/config.yaml && echo "Config written"'
