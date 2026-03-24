@@ -1,0 +1,456 @@
+/**
+ * OpenAI-compatible proxy: forwards requests to an upstream LLM via Primus zkTLS
+ * (non-streaming upstream), rewrites model names, and returns JSON or SSE to clients.
+ */
+const path = require('path');
+const express = require('express');
+const cors = require('cors');
+const { PrimusCoreTLS } = require('@primuslabs/zktls-core-sdk');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
+const PORT = process.env.PORT || 3000;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.deepseek.com/v1';
+const UPSTREAM_MODEL = process.env.UPSTREAM_MODEL || 'deepseek-chat';
+const ZKTLS_APP_ID = process.env.ZKTLS_APP_ID || process.env.PRIMUS_APP_ID;
+const ZKTLS_APP_SECRET = process.env.ZKTLS_APP_SECRET || process.env.PRIMUS_APP_SECRET;
+const ZKTLS_USER_ADDRESS =
+  process.env.ZKTLS_USER_ADDRESS || '0x0000000000000000000000000000000000000000';
+/** Primus init backend: auto | native | wasm (default auto). Server/Linux often falls back to wasm. */
+const ZKTLS_INIT_MODE = process.env.ZKTLS_INIT_MODE || 'auto';
+
+/** JSONPath for the full upstream JSON body (Primus response resolve). */
+const UPSTREAM_RESPONSE_PARSE_PATH = '$';
+const UPSTREAM_RESPONSE_KEY_NAME = 'response';
+
+if (!OPENAI_API_KEY) {
+  console.error('Error: OPENAI_API_KEY is required');
+  process.exit(1);
+}
+
+if (!ZKTLS_APP_ID || !ZKTLS_APP_SECRET) {
+  console.error('Error: ZKTLS_APP_ID and ZKTLS_APP_SECRET (or PRIMUS_APP_*) are required');
+  process.exit(1);
+}
+
+const app = express();
+
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
+});
+
+function joinBaseAndPath(base, pathname) {
+  const b = base.replace(/\/$/, '');
+  const p = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  return `${b}${p}`;
+}
+
+function buildTargetUrl(base, pathname, query) {
+  const pathUrl = joinBaseAndPath(base, pathname);
+  const keys = Object.keys(query || {});
+  if (keys.length === 0) {
+    return pathUrl;
+  }
+  const sp = new URLSearchParams();
+  for (const k of keys) {
+    const v = query[k];
+    if (Array.isArray(v)) {
+      v.forEach((item) => {
+        if (item != null) sp.append(k, String(item));
+      });
+    } else if (v != null) {
+      sp.append(k, String(v));
+    }
+  }
+  const q = sp.toString();
+  return q ? `${pathUrl}?${q}` : pathUrl;
+}
+
+let primusTlsInstance = null;
+let primusInitPromise = null;
+
+async function getPrimusTls() {
+  if (primusTlsInstance) {
+    return primusTlsInstance;
+  }
+  if (!primusInitPromise) {
+    primusInitPromise = (async () => {
+      const zk = new PrimusCoreTLS();
+      await zk.init(ZKTLS_APP_ID, ZKTLS_APP_SECRET, ZKTLS_INIT_MODE);
+      primusTlsInstance = zk;
+      return zk;
+    })();
+  }
+  return primusInitPromise;
+}
+
+let attestationChain = Promise.resolve();
+
+function queueAttestation(fn) {
+  const p = attestationChain.then(() => fn());
+  attestationChain = p.catch(() => { });
+  return p;
+}
+
+function parseAttestedField(attestation, keyName) {
+  let data = attestation.data;
+  if (typeof data === 'string') {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+  const raw = data[keyName];
+  if (raw === undefined) {
+    return null;
+  }
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  }
+  return raw;
+}
+
+function applyClientModelToJson(json, clientModel) {
+  if (!json || typeof json !== 'object') {
+    return json;
+  }
+  const next = { ...json };
+  if (clientModel && 'model' in next) {
+    next.model = clientModel;
+  }
+  return next;
+}
+
+function serializeAttestation(attestation) {
+  if (attestation == null) {
+    return null;
+  }
+  try {
+    return JSON.parse(JSON.stringify(attestation));
+  } catch {
+    return attestation;
+  }
+}
+
+function attachAttestation(body, attestation) {
+  const att = serializeAttestation(attestation);
+  if (body !== null && typeof body === 'object' && !Array.isArray(body)) {
+    return { ...body, attestation: att };
+  }
+  return { result: body, attestation: att };
+}
+
+/**
+ * zkTLS uses non-streaming upstream calls. OpenAI-compatible APIs reject
+ * stream_options unless stream === true, so strip every variant of that field.
+ */
+function sanitizeUpstreamOpenAiBody(body) {
+  const o = body && typeof body === 'object' && !Array.isArray(body) ? { ...body } : {};
+  o.stream = false;
+  for (const key of Object.keys(o)) {
+    const norm = key.toLowerCase().replace(/_/g, '');
+    if (norm === 'streamoptions') {
+      delete o[key];
+    }
+  }
+  delete o.stream_options;
+  delete o.streamOptions;
+  return o;
+}
+
+function clientRequestedEventStream(req) {
+  return req.body && req.body.stream === true;
+}
+
+function writeSseHeaders(res) {
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.removeHeader('Content-Length');
+}
+
+function writeChatCompletionAsSse(res, completionJson, clientModel, attestation) {
+  const json = applyClientModelToJson(completionJson, clientModel);
+  const choice0 = json.choices && json.choices[0];
+  const content =
+    choice0 && choice0.message && typeof choice0.message.content === 'string'
+      ? choice0.message.content
+      : '';
+  const finishReason = (choice0 && choice0.finish_reason) || 'stop';
+  const base = {
+    id: json.id,
+    object: 'chat.completion.chunk',
+    created: json.created,
+    model: json.model,
+  };
+
+  writeSseHeaders(res);
+  res.status(200);
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+
+  const chunk1 = {
+    ...base,
+    choices: [
+      {
+        index: 0,
+        delta: { role: 'assistant', content },
+        finish_reason: null,
+      },
+    ],
+  };
+  res.write(`data: ${JSON.stringify(chunk1)}\n\n`);
+
+  const chunk2 = {
+    ...base,
+    choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
+  };
+  res.write(`data: ${JSON.stringify(chunk2)}\n\n`);
+
+  if (json.usage) {
+    const usageChunk = {
+      ...base,
+      choices: [],
+      usage: json.usage,
+    };
+    res.write(`data: ${JSON.stringify(usageChunk)}\n\n`);
+  }
+
+  const attChunk = {
+    object: 'primus.attestation',
+    attestation: serializeAttestation(attestation),
+  };
+  res.write(`data: ${JSON.stringify(attChunk)}\n\n`);
+
+  res.write('data: [DONE]\n\n');
+  res.end();
+}
+
+function writeJsonAsSse(res, payload, clientModel, attestation) {
+  const json =
+    clientModel && payload && typeof payload === 'object' && 'model' in payload
+      ? { ...payload, model: clientModel }
+      : payload;
+  const envelope = attachAttestation(json, attestation);
+  writeSseHeaders(res);
+  res.status(200);
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+  res.write(`data: ${JSON.stringify(envelope)}\n\n`);
+  res.write('data: [DONE]\n\n');
+  res.end();
+}
+
+async function proxyToUpstream(req, res) {
+  try {
+    const clientModel = req.body?.model;
+    const wantStream = clientRequestedEventStream(req);
+    let upstreamBody =
+      req.body && typeof req.body === 'object' ? { ...req.body } : {};
+
+    if (clientModel && UPSTREAM_MODEL) {
+      upstreamBody.model = UPSTREAM_MODEL;
+    }
+    upstreamBody = sanitizeUpstreamOpenAiBody(upstreamBody);
+
+    const targetUrl = buildTargetUrl(OPENAI_API_BASE, req.path, req.query);
+    const method = (req.method || 'GET').toUpperCase();
+
+    const header = {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    };
+
+    const bodyString =
+      method === 'GET' || method === 'HEAD' ? '' : JSON.stringify(upstreamBody);
+
+    const zk = await getPrimusTls();
+    const networkRequest = {
+      url: targetUrl,
+      method,
+      header,
+      body: bodyString,
+    };
+
+    const responseResolves = [
+      {
+        keyName: UPSTREAM_RESPONSE_KEY_NAME,
+        parseType: 'json',
+        parsePath: UPSTREAM_RESPONSE_PARSE_PATH,
+      },
+    ];
+
+    const attRequest = zk.generateRequestParams(
+      networkRequest,
+      responseResolves,
+      ZKTLS_USER_ADDRESS,
+    );
+    attRequest.setAttMode({
+      algorithmType: 'proxytls',
+      resultType: 'plain',
+    });
+
+    const attestation = await queueAttestation(() => zk.startAttestation(attRequest, 600000));
+    const parsed = parseAttestedField(attestation, UPSTREAM_RESPONSE_KEY_NAME);
+
+    if (parsed === null || parsed === undefined) {
+      res.status(502).json({
+        error: {
+          message: 'Upstream response could not be parsed from attestation',
+          type: 'attestation_error',
+          code: 'bad_attestation_payload',
+        },
+      });
+      return;
+    }
+
+    if (parsed && typeof parsed === 'object' && parsed.error) {
+      const code = parsed.error && parsed.error.code;
+      let status = 502;
+      if (code === 'invalid_api_key' || code === 'authentication_error') {
+        status = 401;
+      } else if (code === 'rate_limit_exceeded') {
+        status = 429;
+      } else if (code === 'insufficient_quota') {
+        status = 402;
+      } else if (typeof code === 'number' && code >= 400 && code < 600) {
+        status = code;
+      }
+      const errBody = attachAttestation(parsed, attestation);
+      if (wantStream) {
+        res.status(status);
+        writeSseHeaders(res);
+        if (typeof res.flushHeaders === 'function') {
+          res.flushHeaders();
+        }
+        res.write(`data: ${JSON.stringify(errBody)}\n\n`);
+        res.write('data: [DONE]\n\n');
+        res.end();
+      } else {
+        res.status(status).json(errBody);
+      }
+      return;
+    }
+
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      parsed.object === 'chat.completion' &&
+      Array.isArray(parsed.choices)
+    ) {
+      if (wantStream) {
+        writeChatCompletionAsSse(res, parsed, clientModel, attestation);
+      } else {
+        const body = attachAttestation(applyClientModelToJson({ ...parsed }, clientModel), attestation);
+        res.json(body);
+      }
+      return;
+    }
+
+    if (wantStream) {
+      writeJsonAsSse(res, parsed, clientModel, attestation);
+    } else {
+      const core =
+        clientModel && parsed && typeof parsed === 'object' && 'model' in parsed
+          ? { ...parsed, model: clientModel }
+          : parsed;
+      res.json(attachAttestation(core, attestation));
+    }
+  } catch (error) {
+    const zkCode = error && error.code;
+    let detail = '';
+    try {
+      if (error && error.data !== undefined && error.data !== null) {
+        detail =
+          typeof error.data === 'string'
+            ? error.data.slice(0, 4000)
+            : JSON.stringify(error.data).slice(0, 4000);
+      }
+    } catch {
+      // ignore
+    }
+    console.error(
+      '[proxy error]',
+      error.message,
+      zkCode ? `zktls_code=${zkCode}` : '',
+      detail ? `detail=${detail}` : '',
+    );
+
+    if (error.code === 'ECONNABORTED') {
+      res.status(504).json({
+        error: {
+          message: 'Request timeout',
+          type: 'timeout_error',
+          code: 'timeout',
+        },
+      });
+    } else if (zkCode && typeof zkCode === 'string') {
+      const hint =
+        zkCode === '30001' || String(error.message || '').includes('400')
+          ? 'Upstream HTTP error (often invalid body: remove stream_options when stream is false, or bad API key).'
+          : zkCode === '00104' || zkCode === '00002'
+            ? 'Primus attestation failed or timed out; retry or check quota/network.'
+            : undefined;
+      res.status(502).json({
+        error: {
+          message: error.message || 'Attestation failed',
+          type: 'zktls_error',
+          code: zkCode,
+          ...(hint ? { hint } : {}),
+        },
+      });
+    } else {
+      const msg = error.message || 'Internal server error';
+      const upstreamHint =
+        /400|Response error|status code error/i.test(msg) &&
+        !/timeout/i.test(msg)
+          ? 'If this only fails on the server, confirm the image includes stream_options fix (upstream stream:false), env vars match local, and try ZKTLS_INIT_MODE=wasm.'
+          : undefined;
+      res.status(500).json({
+        error: {
+          message: msg,
+          type: 'server_error',
+          code: 'internal_error',
+          ...(upstreamHint ? { hint: upstreamHint } : {}),
+        },
+      });
+    }
+  }
+}
+
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    upstream: OPENAI_API_BASE,
+    upstream_model: UPSTREAM_MODEL,
+  });
+});
+
+app.post('/chat/completions', proxyToUpstream);
+app.all('*', proxyToUpstream);
+
+app.listen(PORT, () => {
+  console.log('='.repeat(50));
+  console.log('OpenAI Proxy Service Started');
+  console.log('='.repeat(50));
+  console.log(`Port: ${PORT}`);
+  console.log(`Upstream: ${OPENAI_API_BASE}`);
+  console.log(`Upstream Model: ${UPSTREAM_MODEL}`);
+  console.log(`Health: http://localhost:${PORT}/health`);
+  console.log('='.repeat(50));
+});
