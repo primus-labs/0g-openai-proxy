@@ -16,6 +16,7 @@ services:
       - "8081"
     environment:
       - SERVER_PORT=8081
+      - LD_LIBRARY_PATH=/app/libs
       - JAVA_FULL_NAME=com/pado/PadoCallback
       - KEYSTORE_PATH=${ATTESTOR_KEYSTORE_PATH:-/keystore/keystore.json}
       - KEYSTORE_PASS=${ATTESTOR_KEYSTORE_PASS:-}

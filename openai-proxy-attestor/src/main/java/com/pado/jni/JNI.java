@@ -17,6 +17,10 @@ public class JNI {
     public native String call(String param);
 
     static {
+        loadNativeLibrary();
+    }
+
+    private static void loadNativeLibrary() {
         String libraryPath = System.getenv(LD_LIBRARY_PATH);
         if (libraryPath != null && !libraryPath.isBlank()) {
             for (String entry : libraryPath.split(":")) {
