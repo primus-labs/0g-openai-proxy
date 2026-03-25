@@ -98,13 +98,14 @@ async function testChatCompletionsNonStream() {
     console.log('Response body:', response.body);
     return false;
   }
-  const modelReturned = data.model === testModel;
+  const modelFromUpstream =
+    typeof data.model === 'string' && data.model.length > 0;
   const hasChoices = data.choices && data.choices.length > 0;
   const hasAttestation = data.attestation != null && typeof data.attestation === 'object';
   console.log('Response model:', data.model);
-  console.log(`Model preserved: ${modelReturned ? 'Yes' : 'No'}`);
+  console.log(`Model from upstream: ${modelFromUpstream ? 'Yes' : 'No'}`);
   console.log(`Has attestation: ${hasAttestation ? 'Yes' : 'No'}`);
-  return response.statusCode === 200 && isJson && modelReturned && hasChoices && hasAttestation;
+  return response.statusCode === 200 && isJson && modelFromUpstream && hasChoices && hasAttestation;
 }
 
 async function testChatCompletionsStream() {
@@ -134,7 +135,7 @@ async function testChatCompletionsStream() {
       let chunks = 0;
       let hasData = false;
       let hasDone = false;
-      let modelPreserved = false;
+      let modelFromUpstream = false;
       let hasAttestationChunk = false;
 
       res.on('data', (chunk) => {
@@ -148,8 +149,12 @@ async function testChatCompletionsStream() {
           if (line.startsWith('data: ') && !line.includes('[DONE]')) {
             try {
               const json = JSON.parse(line.slice(6));
-              if (json.model === testModel) {
-                modelPreserved = true;
+              if (
+                json.object === 'chat.completion.chunk' &&
+                typeof json.model === 'string' &&
+                json.model.length > 0
+              ) {
+                modelFromUpstream = true;
               }
               if (
                 json.object === 'primus.attestation' &&
@@ -169,14 +174,14 @@ async function testChatCompletionsStream() {
         console.log(`Received ${chunks} chunks`);
         console.log(`Has data events: ${hasData}`);
         console.log(`Has [DONE]: ${hasDone}`);
-        console.log(`Model preserved: ${modelPreserved ? 'Yes' : 'No'}`);
+        console.log(`Model from upstream (SSE chunks): ${modelFromUpstream ? 'Yes' : 'No'}`);
         console.log(`Has attestation SSE chunk: ${hasAttestationChunk ? 'Yes' : 'No'}`);
         resolve(
           res.statusCode === 200 &&
             isStream &&
             hasData &&
             hasDone &&
-            modelPreserved &&
+            modelFromUpstream &&
             hasAttestationChunk,
         );
       });

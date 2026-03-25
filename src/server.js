@@ -1,6 +1,7 @@
 /**
  * OpenAI-compatible proxy: forwards requests to an upstream LLM via Primus zkTLS
- * (non-streaming upstream), rewrites model names, and returns JSON or SSE to clients.
+ * (non-streaming upstream) and returns JSON or SSE to clients. Request and response
+ * bodies are forwarded without rewriting the `model` field.
  */
 const path = require('path');
 const express = require('express');
@@ -11,7 +12,6 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.deepseek.com/v1';
-const UPSTREAM_MODEL = process.env.UPSTREAM_MODEL || 'deepseek-chat';
 const ZKTLS_APP_ID = process.env.ZKTLS_APP_ID || process.env.PRIMUS_APP_ID;
 const ZKTLS_APP_SECRET = process.env.ZKTLS_APP_SECRET || process.env.PRIMUS_APP_SECRET;
 const ZKTLS_USER_ADDRESS =
@@ -122,17 +122,6 @@ function parseAttestedField(attestation, keyName) {
   return raw;
 }
 
-function applyClientModelToJson(json, clientModel) {
-  if (!json || typeof json !== 'object') {
-    return json;
-  }
-  const next = { ...json };
-  if (clientModel && 'model' in next) {
-    next.model = clientModel;
-  }
-  return next;
-}
-
 function serializeAttestation(attestation) {
   if (attestation == null) {
     return null;
@@ -181,19 +170,18 @@ function writeSseHeaders(res) {
   res.removeHeader('Content-Length');
 }
 
-function writeChatCompletionAsSse(res, completionJson, clientModel, attestation) {
-  const json = applyClientModelToJson(completionJson, clientModel);
-  const choice0 = json.choices && json.choices[0];
+function writeChatCompletionAsSse(res, completionJson, attestation) {
+  const choice0 = completionJson.choices && completionJson.choices[0];
   const content =
     choice0 && choice0.message && typeof choice0.message.content === 'string'
       ? choice0.message.content
       : '';
   const finishReason = (choice0 && choice0.finish_reason) || 'stop';
   const base = {
-    id: json.id,
+    id: completionJson.id,
     object: 'chat.completion.chunk',
-    created: json.created,
-    model: json.model,
+    created: completionJson.created,
+    model: completionJson.model,
   };
 
   writeSseHeaders(res);
@@ -220,11 +208,11 @@ function writeChatCompletionAsSse(res, completionJson, clientModel, attestation)
   };
   res.write(`data: ${JSON.stringify(chunk2)}\n\n`);
 
-  if (json.usage) {
+  if (completionJson.usage) {
     const usageChunk = {
       ...base,
       choices: [],
-      usage: json.usage,
+      usage: completionJson.usage,
     };
     res.write(`data: ${JSON.stringify(usageChunk)}\n\n`);
   }
@@ -239,12 +227,8 @@ function writeChatCompletionAsSse(res, completionJson, clientModel, attestation)
   res.end();
 }
 
-function writeJsonAsSse(res, payload, clientModel, attestation) {
-  const json =
-    clientModel && payload && typeof payload === 'object' && 'model' in payload
-      ? { ...payload, model: clientModel }
-      : payload;
-  const envelope = attachAttestation(json, attestation);
+function writeJsonAsSse(res, payload, attestation) {
+  const envelope = attachAttestation(payload, attestation);
   writeSseHeaders(res);
   res.status(200);
   if (typeof res.flushHeaders === 'function') {
@@ -257,14 +241,10 @@ function writeJsonAsSse(res, payload, clientModel, attestation) {
 
 async function proxyToUpstream(req, res) {
   try {
-    const clientModel = req.body?.model;
     const wantStream = clientRequestedEventStream(req);
     let upstreamBody =
       req.body && typeof req.body === 'object' ? { ...req.body } : {};
 
-    if (clientModel && UPSTREAM_MODEL) {
-      upstreamBody.model = UPSTREAM_MODEL;
-    }
     upstreamBody = sanitizeUpstreamOpenAiBody(upstreamBody);
 
     const targetUrl = buildTargetUrl(OPENAI_API_BASE, req.path, req.query);
@@ -353,22 +333,18 @@ async function proxyToUpstream(req, res) {
       Array.isArray(parsed.choices)
     ) {
       if (wantStream) {
-        writeChatCompletionAsSse(res, parsed, clientModel, attestation);
+        writeChatCompletionAsSse(res, parsed, attestation);
       } else {
-        const body = attachAttestation(applyClientModelToJson({ ...parsed }, clientModel), attestation);
+        const body = attachAttestation({ ...parsed }, attestation);
         res.json(body);
       }
       return;
     }
 
     if (wantStream) {
-      writeJsonAsSse(res, parsed, clientModel, attestation);
+      writeJsonAsSse(res, parsed, attestation);
     } else {
-      const core =
-        clientModel && parsed && typeof parsed === 'object' && 'model' in parsed
-          ? { ...parsed, model: clientModel }
-          : parsed;
-      res.json(attachAttestation(core, attestation));
+      res.json(attachAttestation(parsed, attestation));
     }
   } catch (error) {
     const zkCode = error && error.code;
@@ -437,8 +413,12 @@ app.get('/health', (req, res) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     upstream: OPENAI_API_BASE,
-    upstream_model: UPSTREAM_MODEL,
   });
+});
+
+// Browsers request /favicon.ico for any origin; do not forward to the LLM API.
+app.get('/favicon.ico', (_req, res) => {
+  res.status(204).end();
 });
 
 app.post('/chat/completions', proxyToUpstream);
@@ -450,7 +430,6 @@ app.listen(PORT, () => {
   console.log('='.repeat(50));
   console.log(`Port: ${PORT}`);
   console.log(`Upstream: ${OPENAI_API_BASE}`);
-  console.log(`Upstream Model: ${UPSTREAM_MODEL}`);
   console.log(`Health: http://localhost:${PORT}/health`);
   console.log('='.repeat(50));
 });
