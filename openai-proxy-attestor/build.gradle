@@ -21,10 +21,12 @@ repositories {
 }
 
 dependencies {
+    def lombokVersion = '1.18.32'
+
     implementation group: 'org.web3j', name: 'core', version: '4.9.8'
     implementation('com.fasterxml.jackson.core:jackson-databind:2.14.2')
-    compileOnly 'org.projectlombok:lombok:1.18.20'
-    annotationProcessor 'org.projectlombok:lombok:1.18.20'
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
     implementation group: 'cn.hutool', name: 'hutool-all', version: '5.8.12'
     implementation 'com.jayway.jsonpath:json-path:2.8.0'
     testImplementation platform('org.junit:junit-bom:5.9.1')

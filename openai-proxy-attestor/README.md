@@ -9,6 +9,8 @@
 
 Use JDK 21 and set `JAVA_HOME` first.
 
+This project requires a JDK 21-compatible Lombok version. The embedded Gradle build now uses Lombok `1.18.32`.
+
 ```shell
 cd openai-proxy-attestor
 cmake -S ./callback/pado-attestation-callback-lib -B ./callback/pado-attestation-callback-lib/build
