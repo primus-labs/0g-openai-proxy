@@ -1,0 +1,57 @@
+{
+  "greaterThanBaseValue": true,
+  "sourceUseridHash": "aad1e05212b9838047622e7aa21e95ff0bb296487376e6d5db89a90c6486dbba",
+  "rawParam": {
+    "type": "IDENTIFICATION_PROOF",
+    "label": null,
+    "exUserId": null,
+    "source": "binance",
+    "requestid": "1700732539862",
+    "version": "1.1.0",
+    "baseName": "www.binance.com",
+    "padoUrl": "wss://api-dev.padolabs.org/algorithm",
+    "proxyUrl": "wss://api-dev.padolabs.org/algoproxy",
+    "cipher": "",
+    "getdatatime": "1700732539862",
+    "credVersion": "1.0.2",
+    "sigFormat": "EAS-Ethereum",
+    "schemaType": "BINANCE_KYC_LEVEL#1",
+    "user": {
+      "userid": "1723945100599361536",
+      "address": "0xd7cf78d33ce4c8a70529dc379582b290e1bea1c1",
+      "token": "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJwYWRvbGFicy5vcmciLCJzdWIiOiIweDY2YUY2OTkxMjk5NzExMkVCRTNBMDI0NGM4MENDMGQ1YzA0NTA1OGYiLCJleHAiOjQ4NTM0NTU1MTUsInVzZXItaWQiOjE3MjM5NDUxMDA1OTkzNjE1MzYsInNjb3BlIjoiYXV0aCJ9.citL3qWHXHastliM0-S4T3Wba_0h6NeqwKd67mQWpAv3BMw1ML80c7X0L75Mj9et-O4UvINXafOi8Vgp4Iyv6olE7SfXaknuO7wooKdPOh16i2YtlsHX0ASs9VeWahVMJt-nGxSCDVh6u0LDDrZ_IrIQ8dpNHsatb0FJwMYpdmDyzVMMufMgr1bEFUgtB0IHLPiwUJWRO3OH0jUNHHt9bsTXruffvsryCWziMuzWyTw5Zgu7c5cG-EHynDdB-bQrycXdXUzfWn6Ki75F6Lt0tDKqfoE6N7v5twd1ql8potM1TRIkZVLtvymmUj4a9IiaYYVnrZxq3-Q0JSm-74VyFA"
+    },
+    "authUseridHash": "0x56b22d88bf69535bcaadbc34fab64e42557732bf7d5207ae101b926f377f09d5",
+    "event": "LINEA_DEFI_VOYAGE",
+    "ext": {
+      "extRequests": {
+        "first": {
+          "name": "first",
+          "url": "https://www.binance.com/bapi/accounts/v2/public/account/ip/country-city-short",
+          "calculationType": "MULTI_CONDITION",
+          "parseSchema": "{}"
+        },
+        "kyc": {
+          "name": "kyc",
+          "url": "https://www.binance.com/bapi/accounts/v1/private/account/user/base-detail",
+          "method": "POST",
+          "calculationType": "MULTI_CONDITION",
+          "parseSchema": "{\"conditions\":{\"type\":\"CONDITION_EXPANSION\",\"op\":\"BOOLEAN_AND\",\"subconditions\":[{\"type\":\"FIELD_VALUE\",\"field\":\".data.userId\",\"op\":\"SHA256\"},{\"type\":\"FIELD_RANGE\",\"field\":\".data.jumioEnable\",\"op\":\"=\",\"value\":\"1\"},{\"type\":\"FIELD_RANGE\",\"field\":\".data.level\",\"op\":\">=\",\"value\":\"2\"}]}}"
+        },
+        "orders": [
+          "first",
+          "kyc"
+        ]
+      }
+    },
+    "reqType": "web",
+    "uiTemplate": {
+      "title": "Identity",
+      "proofContent": "KYC Status",
+      "subProofContent": "",
+      "condition": "Verified"
+    },
+    "templateId": "1",
+    "baseValue": "0"
+  }
+}

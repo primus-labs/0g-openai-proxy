@@ -1,0 +1,3 @@
+/Users/xuda/workspace/padolabs/pado-server/pado-attestation-server/libs/macos/CMakeFiles/pado_jni.dir
+/Users/xuda/workspace/padolabs/pado-server/pado-attestation-server/libs/macos/CMakeFiles/edit_cache.dir
+/Users/xuda/workspace/padolabs/pado-server/pado-attestation-server/libs/macos/CMakeFiles/rebuild_cache.dir

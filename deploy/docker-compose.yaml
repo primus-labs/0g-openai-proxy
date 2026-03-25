@@ -3,11 +3,30 @@ services:
     image: alpine:3.18
     environment:
       - BROKER_CONFIG=${BROKER_CONFIG}
+      - KEYSTORE_CONTENT_BASE64=${KEYSTORE_CONTENT_BASE64}
     volumes:
-      - broker-config:/out
-    command: sh -c 'echo "$$BROKER_CONFIG" | base64 -d > /out/config.yaml && echo "Config written"'
+      - broker-config:/out/config
+      - keystore:/out/keystore
+    command: sh -c 'echo "$$BROKER_CONFIG" | base64 -d > /out/config/config.yaml && echo "$$KEYSTORE_CONTENT_BASE64" | base64 -d > /out/keystore/keystore.json && echo "Config and keystore written"'
     networks:
       - default
+  openai-proxy-attestor:
+    image: openai-proxy-attestor:latest
+    ports:
+      - "8081"
+    environment:
+      - SERVER_PORT=8081
+      - JAVA_FULL_NAME=com/pado/PadoCallback
+      - KEYSTORE_PATH=${ATTESTOR_KEYSTORE_PATH:-/keystore/keystore.json}
+      - KEYSTORE_PASS=${ATTESTOR_KEYSTORE_PASS:-}
+    volumes:
+      - keystore:/keystore:ro
+    networks:
+      - default
+    restart: unless-stopped
+    depends_on:
+      config-init:
+        condition: service_completed_successfully
   openai-proxy-client:
     image: virtuex/openai-proxy:latest
     ports:
@@ -70,6 +89,8 @@ services:
         condition: service_healthy
       config-init:
         condition: service_completed_successfully
+      openai-proxy-attestor:
+        condition: service_started
 
   # Event service starts after broker is ready
   0g-serving-provider-event:
@@ -125,6 +146,7 @@ services:
 volumes:
   mysql-data:
   broker-config:
+  keystore:
   dind-storage:
 
 networks:

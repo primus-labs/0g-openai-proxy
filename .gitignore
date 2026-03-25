@@ -60,3 +60,5 @@ coverage/
 
 # Deployment
 ./deploy/config.yml
+./openai-proxy-attestor/.gradle
+./openai-proxy-attestor/.gradle-home

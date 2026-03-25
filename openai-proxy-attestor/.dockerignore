@@ -1,0 +1,4 @@
+.gradle
+build
+callback/**/build
+libs/macos
