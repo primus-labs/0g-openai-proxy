@@ -1,0 +1,1 @@
+docker build -t virtuex/openai-proxy-attestor:latest .
