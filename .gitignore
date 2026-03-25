@@ -57,6 +57,7 @@ coverage/
 .claude/projects/*/memory/*
 .claude/sessions/
 .cursor
+.claude
 
 # Deployment
 ./deploy/config.yml

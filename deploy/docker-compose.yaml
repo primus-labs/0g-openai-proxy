@@ -14,6 +14,8 @@ services:
     image: openai-proxy-attestor:latest
     ports:
       - "8081"
+      - "8082"
+      - "8083"
     environment:
       - SERVER_PORT=8081
       - LD_LIBRARY_PATH=/app/libs
