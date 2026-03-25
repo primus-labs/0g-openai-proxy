@@ -2,6 +2,9 @@ package com.pado.jni;
 
 import static com.pado.constant.SysParam.LD_LIBRARY_PATH;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 /**
  * @author xuda
  * @Type JNI.java
@@ -15,7 +18,18 @@ public class JNI {
 
     static {
         String libraryPath = System.getenv(LD_LIBRARY_PATH);
-        //Load so
-        System.load(libraryPath+"/libpado_jni.so");
+        if (libraryPath != null && !libraryPath.isBlank()) {
+            for (String entry : libraryPath.split(":")) {
+                if (entry == null || entry.isBlank()) {
+                    continue;
+                }
+                Path candidate = Path.of(entry, "libpado_jni.so");
+                if (Files.isRegularFile(candidate)) {
+                    System.load(candidate.toAbsolutePath().toString());
+                    return;
+                }
+            }
+        }
+        System.loadLibrary("pado_jni");
     }
 }
