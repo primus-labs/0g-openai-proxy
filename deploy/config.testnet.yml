@@ -14,7 +14,7 @@ interval:
   settlementProcessor: 300
 service:
   servingUrl: https://fe354a5e9d577f8fc6916a320026f9ec62ec9cda-80.dstack-pha-prod5.phala.network
-  targetUrl: http://openai-proxy-service:8080
+  targetUrl: http://openai-proxy-client:8080
   inputPrice: 900000000000
   outputPrice: 150000000000
   type: chatbot
