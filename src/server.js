@@ -43,6 +43,33 @@ app.use((req, res, next) => {
   next();
 });
 
+/** Log URL origin + pathname only; omit query (may contain tokens). */
+function safeTargetForLog(url) {
+  try {
+    const u = new URL(url);
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return '[invalid-url]';
+  }
+}
+
+/** Request shape for logs — no message content, keys, or secrets. */
+function summarizeProxyRequest(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return {};
+  }
+  const summary = {
+    stream: body.stream === true,
+  };
+  if (typeof body.model === 'string') {
+    summary.model = body.model;
+  }
+  if (Array.isArray(body.messages)) {
+    summary.messageCount = body.messages.length;
+  }
+  return summary;
+}
+
 function joinBaseAndPath(base, pathname) {
   const b = base.replace(/\/$/, '');
   const p = pathname.startsWith('/') ? pathname : `/${pathname}`;
@@ -82,6 +109,9 @@ async function getPrimusTls() {
       const zk = new PrimusCoreTLS();
       await zk.init(ZKTLS_APP_ID, ZKTLS_APP_SECRET, ZKTLS_INIT_MODE);
       primusTlsInstance = zk;
+      console.log(
+        `[${new Date().toISOString()}] Primus zkTLS ready (mode=${ZKTLS_INIT_MODE})`,
+      );
       return zk;
     })();
   }
@@ -217,11 +247,18 @@ function writeChatCompletionAsSse(res, completionJson, attestation) {
     res.write(`data: ${JSON.stringify(usageChunk)}\n\n`);
   }
 
-  const attChunk = {
-    object: 'primus.attestation',
+  // zkTLS proof as an OpenAI-shaped chunk (clients that only handle chat.completion.chunk).
+  // `usage` stays {} per wire shape; attestation is a sibling field (empty usage cannot carry it).
+  const proofChunk = {
+    id: completionJson.id,
+    object: 'chat.completion.chunk',
+    created: completionJson.created,
+    model: completionJson.model,
+    choices: [],
+    usage: {},
     attestation: serializeAttestation(attestation),
   };
-  res.write(`data: ${JSON.stringify(attChunk)}\n\n`);
+  res.write(`data: ${JSON.stringify(proofChunk)}\n\n`);
 
   res.write('data: [DONE]\n\n');
   res.end();
@@ -240,6 +277,7 @@ function writeJsonAsSse(res, payload, attestation) {
 }
 
 async function proxyToUpstream(req, res) {
+  const startedAt = Date.now();
   try {
     const wantStream = clientRequestedEventStream(req);
     let upstreamBody =
@@ -249,6 +287,12 @@ async function proxyToUpstream(req, res) {
 
     const targetUrl = buildTargetUrl(OPENAI_API_BASE, req.path, req.query);
     const method = (req.method || 'GET').toUpperCase();
+
+    const reqSummary = summarizeProxyRequest(req.body);
+    console.log(
+      `[${new Date().toISOString()}] [proxy] ${method} ${req.path} -> ${safeTargetForLog(targetUrl)}`,
+      JSON.stringify(reqSummary),
+    );
 
     const header = {
       Authorization: `Bearer ${OPENAI_API_KEY}`,
@@ -288,6 +332,9 @@ async function proxyToUpstream(req, res) {
     const parsed = parseAttestedField(attestation, UPSTREAM_RESPONSE_KEY_NAME);
 
     if (parsed === null || parsed === undefined) {
+      console.warn(
+        `[${new Date().toISOString()}] [proxy] bad attestation payload ${req.path} durationMs=${Date.now() - startedAt}`,
+      );
       res.status(502).json({
         error: {
           message: 'Upstream response could not be parsed from attestation',
@@ -311,6 +358,11 @@ async function proxyToUpstream(req, res) {
         status = code;
       }
       const errBody = attachAttestation(parsed, attestation);
+      const errCode = parsed.error && parsed.error.code;
+      const errType = parsed.error && parsed.error.type;
+      console.warn(
+        `[${new Date().toISOString()}] [proxy] upstream error ${req.path} http=${status} code=${String(errCode)} type=${String(errType)} durationMs=${Date.now() - startedAt}`,
+      );
       if (wantStream) {
         res.status(status);
         writeSseHeaders(res);
@@ -332,6 +384,11 @@ async function proxyToUpstream(req, res) {
       parsed.object === 'chat.completion' &&
       Array.isArray(parsed.choices)
     ) {
+      const choiceCount = parsed.choices.length;
+      const ms = Date.now() - startedAt;
+      console.log(
+        `[${new Date().toISOString()}] [proxy] ok chat.completion ${req.path} stream=${wantStream} choices=${choiceCount} model=${String(parsed.model || '')} durationMs=${ms}`,
+      );
       if (wantStream) {
         writeChatCompletionAsSse(res, parsed, attestation);
       } else {
@@ -341,6 +398,11 @@ async function proxyToUpstream(req, res) {
       return;
     }
 
+    const ms = Date.now() - startedAt;
+    const obj = parsed && typeof parsed === 'object' ? parsed.object : typeof parsed;
+    console.log(
+      `[${new Date().toISOString()}] [proxy] ok ${req.path} stream=${wantStream} object=${String(obj)} durationMs=${ms}`,
+    );
     if (wantStream) {
       writeJsonAsSse(res, parsed, attestation);
     } else {
@@ -348,22 +410,22 @@ async function proxyToUpstream(req, res) {
     }
   } catch (error) {
     const zkCode = error && error.code;
-    let detail = '';
+    let dataLen = 0;
     try {
       if (error && error.data !== undefined && error.data !== null) {
-        detail =
+        dataLen =
           typeof error.data === 'string'
-            ? error.data.slice(0, 4000)
-            : JSON.stringify(error.data).slice(0, 4000);
+            ? error.data.length
+            : JSON.stringify(error.data).length;
       }
     } catch {
       // ignore
     }
     console.error(
-      '[proxy error]',
+      `[${new Date().toISOString()}] [proxy error] ${req.path} durationMs=${Date.now() - startedAt}`,
       error.message,
       zkCode ? `zktls_code=${zkCode}` : '',
-      detail ? `detail=${detail}` : '',
+      dataLen ? `error.data_len=${dataLen}` : '',
     );
 
     if (error.code === 'ECONNABORTED') {

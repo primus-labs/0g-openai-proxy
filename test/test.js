@@ -157,7 +157,12 @@ async function testChatCompletionsStream() {
                 modelFromUpstream = true;
               }
               if (
-                json.object === 'primus.attestation' &&
+                json.object === 'chat.completion.chunk' &&
+                Array.isArray(json.choices) &&
+                json.choices.length === 0 &&
+                json.usage &&
+                typeof json.usage === 'object' &&
+                Object.keys(json.usage).length === 0 &&
                 json.attestation &&
                 typeof json.attestation === 'object'
               ) {
