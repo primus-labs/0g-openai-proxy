@@ -11,6 +11,9 @@ Use JDK 21 and set `JAVA_HOME` first.
 
 ```shell
 cd openai-proxy-attestor
+cmake -S ./callback/pado-attestation-callback-lib -B ./callback/pado-attestation-callback-lib/build
+cmake --build ./callback/pado-attestation-callback-lib/build
+cp ./callback/pado-attestation-callback-lib/build/libpado_callback_lib.so ./libs/include/libpado_callback_lib.so
 ./gradlew clean installDist
 bash ./libs/compile.sh "$(pwd)/libs/include"
 ```
@@ -21,6 +24,8 @@ bash ./libs/compile.sh "$(pwd)/libs/include"
 cd openai-proxy-attestor
 docker build -t openai-proxy-attestor:latest .
 ```
+
+During `docker build`, the callback library is rebuilt from `callback/pado-attestation-callback-lib/` and replaces `libs/include/libpado_callback_lib.so` before JNI compilation.
 
 ## Runtime environment variables
 

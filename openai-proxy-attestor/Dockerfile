@@ -15,6 +15,9 @@ COPY cipher cipher
 COPY callback callback
 
 RUN chmod +x ./gradlew \
+    && cmake -S ./callback/pado-attestation-callback-lib -B ./callback/pado-attestation-callback-lib/build \
+    && cmake --build ./callback/pado-attestation-callback-lib/build \
+    && cp ./callback/pado-attestation-callback-lib/build/libpado_callback_lib.so ./libs/include/libpado_callback_lib.so \
     && ./gradlew --no-daemon clean installDist \
     && bash ./libs/compile.sh "$(pwd)/libs/include"
 
