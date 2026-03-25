@@ -1,6 +1,11 @@
 #!/bin/bash
 #command such as:
 #   ./compile.sh  /home/xuda/workspace/pado-server/pado-attestation-server/libs/include
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUILD_DIR="${SCRIPT_DIR}/build"
+
 echo $1
 path=$1
 #JAVA_HOME=/home/xuda/env/jdk1.8.0_202
@@ -20,5 +25,5 @@ if [ ! ${path} ]; then
 else
   echo 'libpado.so path is '${path}
 fi
-cmake . -D CMAKE_INSTALL_PREFIX=${path} -D CMAKE_BUILD_TYPE=Debug
-make
+cmake -S "${SCRIPT_DIR}" -B "${BUILD_DIR}" -D CMAKE_INSTALL_PREFIX="${path}" -D CMAKE_BUILD_TYPE=Debug
+cmake --build "${BUILD_DIR}"

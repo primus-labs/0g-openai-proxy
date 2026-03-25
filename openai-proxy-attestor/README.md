@@ -28,6 +28,7 @@ docker build -t openai-proxy-attestor:latest .
 ```
 
 During `docker build`, the callback library is rebuilt from `callback/pado-attestation-callback-lib/` and replaces `libs/include/libpado_callback_lib.so` before JNI compilation.
+The JNI compile script now builds from its own directory, so it does not depend on the current shell working directory.
 
 ## Runtime environment variables
 
