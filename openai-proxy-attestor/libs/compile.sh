@@ -27,3 +27,13 @@ else
 fi
 cmake -S "${SCRIPT_DIR}" -B "${BUILD_DIR}" -D CMAKE_INSTALL_PREFIX="${path}" -D CMAKE_BUILD_TYPE=Debug
 cmake --build "${BUILD_DIR}"
+
+JNI_LIB="$(find "${BUILD_DIR}" -maxdepth 1 -type f \( -name 'libpado_jni.so' -o -name 'libpado_jni.dylib' \) | head -n 1)"
+
+if [ ! "${JNI_LIB}" ]; then
+  echo "libpado_jni output not found under ${BUILD_DIR}"
+  exit 1
+fi
+
+cp "${JNI_LIB}" "${SCRIPT_DIR}/$(basename "${JNI_LIB}")"
+echo "Copied $(basename "${JNI_LIB}") to ${SCRIPT_DIR}"

@@ -20,6 +20,8 @@ cp ./callback/pado-attestation-callback-lib/build/libpado_callback_lib.so ./libs
 bash ./libs/compile.sh "$(pwd)/libs/include"
 ```
 
+After JNI compilation, the script copies `libpado_jni.so` (or `libpado_jni.dylib` on macOS) into `libs/` so Docker and local runs can use a stable path.
+
 ## Build Docker image
 
 ```shell
