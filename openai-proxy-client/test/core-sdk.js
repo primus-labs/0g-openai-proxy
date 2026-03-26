@@ -135,6 +135,9 @@ async function getBtcPrice() {
 
             console.log('\nATTESTATION (proof):');
             console.log(JSON.stringify(attestation, null, 2));
+
+            const verifyResult = zkTLS.verifyAttestation(attestation);
+            console.log("Attestation verifyResult: ", verifyResult);
         } else {
             console.error('    ✗ Failed to extract data from attestation');
             console.error('    Attestation data:', attestation.data);

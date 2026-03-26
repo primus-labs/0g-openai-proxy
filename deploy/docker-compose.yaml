@@ -34,6 +34,10 @@ services:
     image: virtuex/openai-proxy:latest
     ports:
       - "8080"
+    environment:
+      - PRIMUS_MPC_URL=ws://openai-proxy-attestor:8081
+      - PRIMUS_PROXY_URL=ws://openai-proxy-attestor:8082
+      - PROXY_URL=ws://openai-proxy-attestor:8083
     networks:
       - default
   mysql:
