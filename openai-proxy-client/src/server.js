@@ -18,6 +18,9 @@ const ZKTLS_USER_ADDRESS =
   process.env.ZKTLS_USER_ADDRESS || '0x0000000000000000000000000000000000000000';
 /** Primus init backend: auto | native | wasm (default auto). Server/Linux often falls back to wasm. */
 const ZKTLS_INIT_MODE = process.env.ZKTLS_INIT_MODE || 'auto';
+const PRIMUS_MPC_URL = process.env.PRIMUS_MPC_URL || 'ws://api-dev.padolabs.org:38110';
+const PRIMUS_PROXY_URL = process.env.PRIMUS_PROXY_URL || 'ws://api-dev.padolabs.org:38111';
+const PROXY_URL = process.env.PROXY_URL || 'ws://api-dev.padolabs.org:38112';
 
 /** JSONPath for the full upstream JSON body (Primus response resolve). */
 const UPSTREAM_RESPONSE_PARSE_PATH = '$';
@@ -328,7 +331,14 @@ async function proxyToUpstream(req, res) {
       resultType: 'plain',
     });
 
-    const attestation = await queueAttestation(() => zk.startAttestation(attRequest, 600000));
+    const urls = {
+      primusMpcUrl: PRIMUS_MPC_URL,
+      primusProxyUrl: PRIMUS_PROXY_URL,
+      proxyUrl: PROXY_URL,
+    };
+    const attestation = await queueAttestation(() =>
+      zk.startAttestation(attRequest, 600000, urls),
+    );
     const parsed = parseAttestedField(attestation, UPSTREAM_RESPONSE_KEY_NAME);
 
     if (parsed === null || parsed === undefined) {

@@ -11,6 +11,9 @@ require('dotenv').config({path: path.join(__dirname, '..', '.env')});
 const ZKTLS_APP_ID = process.env.ZKTLS_APP_ID || process.env.PRIMUS_APP_ID;
 const ZKTLS_APP_SECRET = process.env.ZKTLS_APP_SECRET || process.env.PRIMUS_APP_SECRET;
 const ZKTLS_INIT_MODE = process.env.ZKTLS_INIT_MODE || 'auto';
+const PRIMUS_MPC_URL = process.env.PRIMUS_MPC_URL || 'ws://api-dev.padolabs.org:38110';
+const PRIMUS_PROXY_URL = process.env.PRIMUS_PROXY_URL || 'ws://api-dev.padolabs.org:38111';
+const PROXY_URL = process.env.PROXY_URL || 'ws://api-dev.padolabs.org:38112';
 
 if (!ZKTLS_APP_ID || !ZKTLS_APP_SECRET) {
     console.error('Error: ZKTLS_APP_ID and ZKTLS_APP_SECRET (or PRIMUS_APP_*) are required');
@@ -102,10 +105,10 @@ async function getBtcPrice() {
         console.log('\n[5] Starting attestation (this may take a while)...');
         const startTime = Date.now();
         const urls = {
-            primusMpcUrl: "ws://api-dev.padolabs.org:38110",
-            primusProxyUrl: "ws://api-dev.padolabs.org:38111",
-            proxyUrl: "ws://api-dev.padolabs.org:38112"
-        }
+            primusMpcUrl: PRIMUS_MPC_URL,
+            primusProxyUrl: PRIMUS_PROXY_URL,
+            proxyUrl: PROXY_URL
+        };
         const attestation = await zkTLS.startAttestation(attRequest, 2 * 60 * 1000, urls);
         // const attestation = await zkTLS.startAttestation(attRequest, 2 * 60 * 1000);
         const duration = Date.now() - startTime;
