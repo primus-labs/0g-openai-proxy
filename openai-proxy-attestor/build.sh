@@ -1,1 +1,1 @@
-docker build -t virtuex/openai-proxy-attestor:latest .
+docker build -t primuslabs/openai-proxy-attestor:latest .
