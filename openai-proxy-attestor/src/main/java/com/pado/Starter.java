@@ -3,6 +3,7 @@ package com.pado;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.log.Log;
+import com.pado.local.LocalSignatureService;
 import com.pado.server.AttestationServer;
 import lombok.extern.slf4j.Slf4j;
 
@@ -33,6 +34,8 @@ public class Starter {
         if (StrUtil.isEmpty(serverPort)) {
             throw new RuntimeException("server_port is empty, start failed!");
         }
+        log.info("Attestor callback mode: {}", LocalSignatureService.usesLocalSigning() ? "local-signature" : "remote-callback");
+        LocalSignatureService.warmupIfEnabled();
         PadoCallback padoCallback = new PadoCallback();
         CountDownLatch countDownLatch = new CountDownLatch(1);
         AttestationServer server = new AttestationServer();

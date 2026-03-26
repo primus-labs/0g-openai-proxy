@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 public class LocalSignatureService {
+    private static final Log STATIC_LOG = Log.get(LocalSignatureService.class);
     protected Log log = Log.get(LocalSignatureService.class);
 
     private static final String ERROR_UNSUPPORTED = "Unsupported local signature request";
@@ -48,6 +49,19 @@ public class LocalSignatureService {
 
     public static LocalSignatureService getInstance() {
         return Holder.INSTANCE;
+    }
+
+    public static boolean usesLocalSigning() {
+        return StrUtil.isEmpty(callbackUrl());
+    }
+
+    public static void warmupIfEnabled() {
+        if (!usesLocalSigning()) {
+            STATIC_LOG.info("Remote callback mode enabled, skip LocalSignatureService warmup");
+            return;
+        }
+        LocalSignatureService instance = getInstance();
+        STATIC_LOG.info("Local signature mode enabled, LocalSignatureService warmed up with address: {}", instance.credentials.getAddress());
     }
 
     public String sign(String rawRequestBody) {
@@ -441,6 +455,14 @@ public class LocalSignatureService {
             }
         }
         return null;
+    }
+
+    private static String callbackUrl() {
+        String callUrl = System.getenv("CALL_URL");
+        if (StrUtil.isNotEmpty(callUrl)) {
+            return callUrl;
+        }
+        return System.getenv("PADO_CALLBACK_URL");
     }
 
     private String firstNonEmpty(String... values) {
