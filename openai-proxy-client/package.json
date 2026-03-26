@@ -15,7 +15,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@primuslabs/zktls-core-sdk": "^0.2.6",
+    "@primuslabs/zktls-core-sdk": "^0.2.7",
     "cors": "^2.8.5",
     "tslib": "^2.6.2",
     "dotenv": "^16.3.1",

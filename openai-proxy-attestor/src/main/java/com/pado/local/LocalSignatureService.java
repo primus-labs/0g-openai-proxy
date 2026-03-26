@@ -6,8 +6,10 @@ import cn.hutool.core.lang.TypeReference;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONUtil;
+import cn.hutool.log.Log;
 import com.jayway.jsonpath.JsonPath;
 import com.pado.bean.response.DataSignatureResponse;
+import com.pado.handler.BaseCallMethodHandler;
 import org.web3j.abi.DefaultFunctionEncoder;
 import org.web3j.abi.TypeEncoder;
 import org.web3j.abi.datatypes.Address;
@@ -32,6 +34,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 public class LocalSignatureService {
+    protected Log log = Log.get(LocalSignatureService.class);
+
     private static final String ERROR_UNSUPPORTED = "Unsupported local signature request";
     private static final String PRIMUS_URL = "https://primuslabs.xyz";
     private static final String SOLANA_X_FOLLOWER_TEMPLATE_ID = "07866310-b51d-4ba6-bc10-f6e9272475f8";
@@ -417,7 +421,9 @@ public class LocalSignatureService {
             throw new IllegalStateException("Missing KEYSTORE_PATH/keystorePath or KEYSTORE_PASS/keystorePass");
         }
         try {
-            return WalletUtils.loadCredentials(keystorePass, new File(keystorePath));
+            Credentials credentials1 = WalletUtils.loadCredentials(keystorePass, new File(keystorePath));
+            log.info("Credentials address is : " + credentials1.getAddress());
+            return credentials1;
         } catch (Exception e) {
             throw new IllegalStateException("Failed to load credentials: " + e.getMessage(), e);
         }

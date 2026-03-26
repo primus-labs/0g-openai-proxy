@@ -63,6 +63,7 @@ public class DataSignatureCallMethodHandler extends BaseCallMethodHandler<String
                     return rspBody;
                 }
             } else {
+                log.info("Use LocalSignatureService");
                 responseBody = LocalSignatureService.getInstance().sign(rawRequestBody);
             }
 
