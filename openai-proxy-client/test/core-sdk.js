@@ -102,9 +102,9 @@ async function getBtcPrice() {
         console.log('\n[5] Starting attestation (this may take a while)...');
         const startTime = Date.now();
         const urls = {
-            primusMpcUrl: "wss://api-dev.padolabs.org/algorithm-0g",
-            primusProxyUrl: "wss://api-dev.padolabs.org/algorithm-proxy-0g",
-            proxyUrl: "wss://api-dev.padolabs.org/algoproxy-0g"
+            primusMpcUrl: "ws://api-dev.padolabs.org:38110",
+            primusProxyUrl: "ws://api-dev.padolabs.org:38111",
+            proxyUrl: "ws://api-dev.padolabs.org:38112"
         }
         const attestation = await zkTLS.startAttestation(attRequest, 2 * 60 * 1000, urls);
         // const attestation = await zkTLS.startAttestation(attRequest, 2 * 60 * 1000);
