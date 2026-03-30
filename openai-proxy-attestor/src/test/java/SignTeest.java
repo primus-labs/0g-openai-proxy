@@ -24,7 +24,7 @@
 //public class SignTeest {
 //
 //    //Sepolia: {
-//    static String rpcUrl = "https://sepolia.infura.io/v3/b6bf7d3508c941499b10025c0776eaf8";
+//    static String rpcUrl = "";
 //    static String easContact = "0xC2679fBD37d54388Ce493F1DB75320D236e1815e";
 //    static String schemaUid = "0x72785c9098718a320672387465aba432ea1f2a40e7c2acc67f61ee5d8e7f5b09";
 //    //}

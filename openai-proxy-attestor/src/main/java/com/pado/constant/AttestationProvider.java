@@ -47,7 +47,7 @@ public class AttestationProvider {
      * Sepolia
      */
     private static final Map<String, String> EAS_SEPOLIA = new HashMap<String,String>() {{
-        put("rpcUrl", "https://sepolia.infura.io/v3/b6bf7d3508c941499b10025c0776eaf8");
+        put("rpcUrl", "");
         //this value is Deprecated
         put("easContact", "0xC2679fBD37d54388Ce493F1DB75320D236e1815e");
         //easProxyContact is deployed by pado
