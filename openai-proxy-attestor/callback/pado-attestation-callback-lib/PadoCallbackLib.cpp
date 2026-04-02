@@ -57,7 +57,7 @@ PadoCallbackLib::PadoCallbackLib(JNIEnv* tenv) {
 
 std::string PadoCallbackLib::call(const std::string& param) {
     std::cout << "param is: " << param << std::endl;
-    std::cout << "param bytes(hex): " << bytes_to_hex(param) << std::endl;
+//     std::cout << "param bytes(hex): " << bytes_to_hex(param) << std::endl;
 
     int attach = 0;
     JNIEnv* env = get_env(&attach);
@@ -149,11 +149,11 @@ std::string PadoCallbackLib::call(const std::string& param) {
         del_env();
     }
 
-    std::cout << "java result utf16 length: " << utf16Length << std::endl;
-    std::cout << "java result utf16 units(hex): " << utf16Hex << std::endl;
-    std::cout << "java result modified utf8 bytes(hex): " << bytes_to_hex(modifiedUtf8) << std::endl;
-    std::cout << "result str utf8 bytes(hex): " << bytes_to_hex(str) << std::endl;
-    std::cout << "result str is: " << str << std::endl;
+//     std::cout << "java result utf16 length: " << utf16Length << std::endl;
+//     std::cout << "java result utf16 units(hex): " << utf16Hex << std::endl;
+//     std::cout << "java result modified utf8 bytes(hex): " << bytes_to_hex(modifiedUtf8) << std::endl;
+//     std::cout << "result str utf8 bytes(hex): " << bytes_to_hex(str) << std::endl;
+//     std::cout << "result str is: " << str << std::endl;
 
     return str;
 }
