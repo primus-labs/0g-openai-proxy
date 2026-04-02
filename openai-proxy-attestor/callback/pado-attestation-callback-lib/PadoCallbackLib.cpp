@@ -83,6 +83,7 @@ std::string PadoCallbackLib::call(const std::string& param) {
     if (attach == 1) {
         del_env();
     }
+    std::cout << "result str is: " << str << std::endl;
 
     return str;
 }
