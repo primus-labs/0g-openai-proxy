@@ -25,11 +25,11 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` and set your API key:
+Edit `.env` and set your upstream API key:
 
 ```env
 PORT=3000
-OPENAI_API_KEY=sk-your-actual-api-key-here
+OPENAI_API_KEY=sk-your-deepseek-api-key-here
 OPENAI_API_BASE=https://api.deepseek.com/v1
 UPSTREAM_MODEL=deepseek-chat
 ```

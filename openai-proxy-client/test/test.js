@@ -60,7 +60,12 @@ async function testHealthEndpoint() {
   console.log(`Status: ${response.statusCode}`);
   const data = JSON.parse(response.body);
   console.log('Response:', JSON.stringify(data, null, 2));
-  return response.statusCode === 200 && data.status === 'ok';
+  return (
+    response.statusCode === 200 &&
+    data.status === 'ok' &&
+    typeof data.upstreamModel === 'string' &&
+    data.upstreamModel.length > 0
+  );
 }
 
 async function testChatCompletionsNonStream() {
@@ -98,14 +103,13 @@ async function testChatCompletionsNonStream() {
     console.log('Response body:', response.body);
     return false;
   }
-  const modelFromUpstream =
-    typeof data.model === 'string' && data.model.length > 0;
+  const modelWasRestored = data.model === testModel;
   const hasChoices = data.choices && data.choices.length > 0;
   const hasAttestation = data.attestation != null && typeof data.attestation === 'object';
   console.log('Response model:', data.model);
-  console.log(`Model from upstream: ${modelFromUpstream ? 'Yes' : 'No'}`);
+  console.log(`Model restored to client model: ${modelWasRestored ? 'Yes' : 'No'}`);
   console.log(`Has attestation: ${hasAttestation ? 'Yes' : 'No'}`);
-  return response.statusCode === 200 && isJson && modelFromUpstream && hasChoices && hasAttestation;
+  return response.statusCode === 200 && isJson && modelWasRestored && hasChoices && hasAttestation;
 }
 
 async function testChatCompletionsStream() {
@@ -135,7 +139,7 @@ async function testChatCompletionsStream() {
       let chunks = 0;
       let hasData = false;
       let hasDone = false;
-      let modelFromUpstream = false;
+      let modelWasRestored = false;
       let hasAttestationChunk = false;
 
       res.on('data', (chunk) => {
@@ -152,9 +156,9 @@ async function testChatCompletionsStream() {
               if (
                 json.object === 'chat.completion.chunk' &&
                 typeof json.model === 'string' &&
-                json.model.length > 0
+                json.model === testModel
               ) {
-                modelFromUpstream = true;
+                modelWasRestored = true;
               }
               if (
                 json.object === 'chat.completion.chunk' &&
@@ -179,14 +183,14 @@ async function testChatCompletionsStream() {
         console.log(`Received ${chunks} chunks`);
         console.log(`Has data events: ${hasData}`);
         console.log(`Has [DONE]: ${hasDone}`);
-        console.log(`Model from upstream (SSE chunks): ${modelFromUpstream ? 'Yes' : 'No'}`);
+        console.log(`Model restored in SSE chunks: ${modelWasRestored ? 'Yes' : 'No'}`);
         console.log(`Has attestation SSE chunk: ${hasAttestationChunk ? 'Yes' : 'No'}`);
         resolve(
           res.statusCode === 200 &&
             isStream &&
             hasData &&
             hasDone &&
-            modelFromUpstream &&
+            modelWasRestored &&
             hasAttestationChunk,
         );
       });

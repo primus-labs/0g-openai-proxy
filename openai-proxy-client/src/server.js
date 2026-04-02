@@ -1,7 +1,7 @@
 /**
  * OpenAI-compatible proxy: forwards requests to an upstream LLM via Primus zkTLS
- * (non-streaming upstream) and returns JSON or SSE to clients. Request and response
- * bodies are forwarded without rewriting the `model` field.
+ * (non-streaming upstream) and returns JSON or SSE to clients. The client-facing
+ * model id can be rewritten to a configured upstream model and restored in responses.
  */
 const path = require('path');
 const express = require('express');
@@ -12,6 +12,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.deepseek.com/v1';
+const UPSTREAM_MODEL = process.env.UPSTREAM_MODEL || 'deepseek-chat';
 const ZKTLS_APP_ID = process.env.ZKTLS_APP_ID || process.env.PRIMUS_APP_ID;
 const ZKTLS_APP_SECRET = process.env.ZKTLS_APP_SECRET || process.env.PRIMUS_APP_SECRET;
 const ZKTLS_USER_ADDRESS =
@@ -192,6 +193,36 @@ function sanitizeUpstreamOpenAiBody(body) {
   return o;
 }
 
+function rewriteModelForUpstream(body) {
+  const originalModel =
+    body && typeof body === 'object' && !Array.isArray(body) && typeof body.model === 'string'
+      ? body.model
+      : null;
+
+  if (!UPSTREAM_MODEL) {
+    return { body, originalModel };
+  }
+
+  const nextBody =
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? { ...body, model: UPSTREAM_MODEL }
+      : body;
+  return { body: nextBody, originalModel };
+}
+
+function rewriteResponseModel(payload, clientModel) {
+  if (
+    !clientModel ||
+    !payload ||
+    typeof payload !== 'object' ||
+    Array.isArray(payload) ||
+    typeof payload.model !== 'string'
+  ) {
+    return payload;
+  }
+  return { ...payload, model: clientModel };
+}
+
 function clientRequestedEventStream(req) {
   return req.body && req.body.stream === true;
 }
@@ -287,6 +318,8 @@ async function proxyToUpstream(req, res) {
       req.body && typeof req.body === 'object' ? { ...req.body } : {};
 
     upstreamBody = sanitizeUpstreamOpenAiBody(upstreamBody);
+    const { body: rewrittenBody, originalModel } = rewriteModelForUpstream(upstreamBody);
+    upstreamBody = rewrittenBody;
 
     const targetUrl = buildTargetUrl(OPENAI_API_BASE, req.path, req.query);
     const method = (req.method || 'GET').toUpperCase();
@@ -394,29 +427,31 @@ async function proxyToUpstream(req, res) {
       parsed.object === 'chat.completion' &&
       Array.isArray(parsed.choices)
     ) {
+      const responseBody = rewriteResponseModel(parsed, originalModel);
       const choiceCount = parsed.choices.length;
       const ms = Date.now() - startedAt;
       console.log(
-        `[${new Date().toISOString()}] [proxy] ok chat.completion ${req.path} stream=${wantStream} choices=${choiceCount} model=${String(parsed.model || '')} durationMs=${ms}`,
+        `[${new Date().toISOString()}] [proxy] ok chat.completion ${req.path} stream=${wantStream} choices=${choiceCount} clientModel=${String(originalModel || parsed.model || '')} upstreamModel=${String(parsed.model || '')} durationMs=${ms}`,
       );
       if (wantStream) {
-        writeChatCompletionAsSse(res, parsed, attestation);
+        writeChatCompletionAsSse(res, responseBody, attestation);
       } else {
-        const body = attachAttestation({ ...parsed }, attestation);
+        const body = attachAttestation(responseBody, attestation);
         res.json(body);
       }
       return;
     }
 
+    const responseBody = rewriteResponseModel(parsed, originalModel);
     const ms = Date.now() - startedAt;
     const obj = parsed && typeof parsed === 'object' ? parsed.object : typeof parsed;
     console.log(
       `[${new Date().toISOString()}] [proxy] ok ${req.path} stream=${wantStream} object=${String(obj)} durationMs=${ms}`,
     );
     if (wantStream) {
-      writeJsonAsSse(res, parsed, attestation);
+      writeJsonAsSse(res, responseBody, attestation);
     } else {
-      res.json(attachAttestation(parsed, attestation));
+      res.json(attachAttestation(responseBody, attestation));
     }
   } catch (error) {
     const zkCode = error && error.code;
@@ -485,6 +520,7 @@ app.get('/health', (req, res) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     upstream: OPENAI_API_BASE,
+    upstreamModel: UPSTREAM_MODEL,
   });
 });
 
@@ -502,6 +538,7 @@ app.listen(PORT, () => {
   console.log('='.repeat(50));
   console.log(`Port: ${PORT}`);
   console.log(`Upstream: ${OPENAI_API_BASE}`);
+  console.log(`Upstream model: ${UPSTREAM_MODEL}`);
   console.log(`Health: http://localhost:${PORT}/health`);
   console.log('='.repeat(50));
 });
