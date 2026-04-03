@@ -1,7 +1,9 @@
 /**
  * HTTP integration tests against a running server (npm start). Requires env for chat tests.
  */
+const path = require('path');
 const http = require('http');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const PORT = process.env.PORT || 3000;
 const HAS_API_KEY = process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'your_api_key_here';

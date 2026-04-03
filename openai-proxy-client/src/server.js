@@ -6,7 +6,12 @@
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
-const { PrimusCoreTLS } = require('@primuslabs/zktls-core-sdk');
+const { createAttestationWorkerPool } = require('./attestation/pool');
+const {
+  buildAttestationTaskPayload,
+  parseAttestedField,
+  serializeAttestation,
+} = require('./attestation/shared');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const PORT = process.env.PORT || 3000;
@@ -22,6 +27,13 @@ const ZKTLS_INIT_MODE = process.env.ZKTLS_INIT_MODE || 'auto';
 const PRIMUS_MPC_URL = process.env.PRIMUS_MPC_URL || 'ws://api-dev.padolabs.org:38110';
 const PRIMUS_PROXY_URL = process.env.PRIMUS_PROXY_URL || 'ws://api-dev.padolabs.org:38111';
 const PROXY_URL = process.env.PROXY_URL || 'ws://api-dev.padolabs.org:38112';
+const ZKTLS_TASK_TIMEOUT_MS = Number(process.env.ZKTLS_TASK_TIMEOUT_MS || 600000);
+const ZKTLS_MIN_WORKERS = Number(
+  process.env.ZKTLS_MIN_WORKERS || process.env.ZKTLS_WORKER_COUNT || 2,
+);
+const ZKTLS_MAX_WORKERS = Number(process.env.ZKTLS_MAX_WORKERS || ZKTLS_MIN_WORKERS);
+const ZKTLS_MAX_QUEUE_SIZE = Number(process.env.ZKTLS_MAX_QUEUE_SIZE || 100);
+const ZKTLS_IDLE_SHRINK_MS = Number(process.env.ZKTLS_IDLE_SHRINK_MS || 30000);
 
 /** JSONPath for the full upstream JSON body (Primus response resolve). */
 const UPSTREAM_RESPONSE_PARSE_PATH = '$';
@@ -101,71 +113,13 @@ function buildTargetUrl(base, pathname, query) {
   return q ? `${pathUrl}?${q}` : pathUrl;
 }
 
-let primusTlsInstance = null;
-let primusInitPromise = null;
-
-async function getPrimusTls() {
-  if (primusTlsInstance) {
-    return primusTlsInstance;
-  }
-  if (!primusInitPromise) {
-    primusInitPromise = (async () => {
-      const zk = new PrimusCoreTLS();
-      await zk.init(ZKTLS_APP_ID, ZKTLS_APP_SECRET, ZKTLS_INIT_MODE);
-      primusTlsInstance = zk;
-      console.log(
-        `[${new Date().toISOString()}] Primus zkTLS ready (mode=${ZKTLS_INIT_MODE})`,
-      );
-      return zk;
-    })();
-  }
-  return primusInitPromise;
-}
-
-let attestationChain = Promise.resolve();
-
-function queueAttestation(fn) {
-  const p = attestationChain.then(() => fn());
-  attestationChain = p.catch(() => { });
-  return p;
-}
-
-function parseAttestedField(attestation, keyName) {
-  let data = attestation.data;
-  if (typeof data === 'string') {
-    try {
-      data = JSON.parse(data);
-    } catch {
-      return null;
-    }
-  }
-  if (!data || typeof data !== 'object') {
-    return null;
-  }
-  const raw = data[keyName];
-  if (raw === undefined) {
-    return null;
-  }
-  if (typeof raw === 'string') {
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return raw;
-    }
-  }
-  return raw;
-}
-
-function serializeAttestation(attestation) {
-  if (attestation == null) {
-    return null;
-  }
-  try {
-    return JSON.parse(JSON.stringify(attestation));
-  } catch {
-    return attestation;
-  }
-}
+const attestationPool = createAttestationWorkerPool({
+  minWorkers: ZKTLS_MIN_WORKERS,
+  maxWorkers: ZKTLS_MAX_WORKERS,
+  maxQueueSize: ZKTLS_MAX_QUEUE_SIZE,
+  taskTimeoutMs: ZKTLS_TASK_TIMEOUT_MS,
+  idleShrinkMs: ZKTLS_IDLE_SHRINK_MS,
+});
 
 function attachAttestation(body, attestation) {
   const att = serializeAttestation(attestation);
@@ -338,7 +292,6 @@ async function proxyToUpstream(req, res) {
     const bodyString =
       method === 'GET' || method === 'HEAD' ? '' : JSON.stringify(upstreamBody);
 
-    const zk = await getPrimusTls();
     const networkRequest = {
       url: targetUrl,
       method,
@@ -354,23 +307,23 @@ async function proxyToUpstream(req, res) {
       },
     ];
 
-    const attRequest = zk.generateRequestParams(
-      networkRequest,
-      responseResolves,
-      ZKTLS_USER_ADDRESS,
-    );
-    attRequest.setAttMode({
-      algorithmType: 'proxytls',
-      resultType: 'plain',
-    });
-
     const urls = {
       primusMpcUrl: PRIMUS_MPC_URL,
       primusProxyUrl: PRIMUS_PROXY_URL,
       proxyUrl: PROXY_URL,
     };
-    const attestation = await queueAttestation(() =>
-      zk.startAttestation(attRequest, 600000, urls),
+    const attestation = await attestationPool.runTask(
+      buildAttestationTaskPayload({
+        networkRequest,
+        responseResolves,
+        userAddress: ZKTLS_USER_ADDRESS,
+        urls,
+        timeoutMs: ZKTLS_TASK_TIMEOUT_MS,
+        attMode: {
+          algorithmType: 'proxytls',
+          resultType: 'plain',
+        },
+      }),
     );
     const parsed = parseAttestedField(attestation, UPSTREAM_RESPONSE_KEY_NAME);
 
@@ -473,12 +426,31 @@ async function proxyToUpstream(req, res) {
       dataLen ? `error.data_len=${dataLen}` : '',
     );
 
-    if (error.code === 'ECONNABORTED') {
+    if (error.code === 'ECONNABORTED' || error.code === 'attestation_timeout') {
       res.status(504).json({
         error: {
           message: 'Request timeout',
           type: 'timeout_error',
           code: 'timeout',
+        },
+      });
+    } else if (error.code === 'attestation_queue_full') {
+      res.status(503).json({
+        error: {
+          message: 'Attestation capacity is saturated',
+          type: 'server_overloaded',
+          code: 'attestation_queue_full',
+        },
+      });
+    } else if (
+      error.code === 'attestation_pool_unavailable' ||
+      error.code === 'attestation_worker_exit'
+    ) {
+      res.status(error.httpStatus || 503).json({
+        error: {
+          message: error.message || 'Attestation worker pool is unavailable',
+          type: 'server_error',
+          code: error.code || 'attestation_pool_unavailable',
         },
       });
     } else if (zkCode && typeof zkCode === 'string') {
@@ -521,6 +493,15 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     upstream: OPENAI_API_BASE,
     upstreamModel: UPSTREAM_MODEL,
+    attestationPool: attestationPool.getStats(),
+  });
+});
+
+app.get('/debug/attestation-pool', (_req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    attestationPool: attestationPool.getStats(),
   });
 });
 
@@ -540,5 +521,18 @@ app.listen(PORT, () => {
   console.log(`Upstream: ${OPENAI_API_BASE}`);
   console.log(`Upstream model: ${UPSTREAM_MODEL}`);
   console.log(`Health: http://localhost:${PORT}/health`);
+  console.log(`zkTLS init mode: ${ZKTLS_INIT_MODE}`);
+  console.log(`zkTLS min workers: ${ZKTLS_MIN_WORKERS}`);
+  console.log(`zkTLS max workers: ${ZKTLS_MAX_WORKERS}`);
+  console.log(`zkTLS max queue size: ${ZKTLS_MAX_QUEUE_SIZE}`);
+  console.log(`zkTLS idle shrink ms: ${ZKTLS_IDLE_SHRINK_MS}`);
+  console.log(`zkTLS task timeout ms: ${ZKTLS_TASK_TIMEOUT_MS}`);
   console.log('='.repeat(50));
+});
+
+attestationPool.start().catch((error) => {
+  console.error(
+    `[${new Date().toISOString()}] [attestation-pool] startup failed`,
+    error.message,
+  );
 });
