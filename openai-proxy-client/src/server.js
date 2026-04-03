@@ -424,6 +424,7 @@ async function proxyToUpstream(req, res) {
       error.message,
       zkCode ? `zktls_code=${zkCode}` : '',
       dataLen ? `error.data_len=${dataLen}` : '',
+        error ? `error=${error}` : '',
     );
 
     if (error.code === 'ECONNABORTED' || error.code === 'attestation_timeout') {
