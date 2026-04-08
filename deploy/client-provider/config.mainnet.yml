@@ -23,9 +23,10 @@ service:
   targetTeeAddress: 0xb8f026D941A59Ffb7ADaeD3e52d0c3404966f275
   targetSeparated: false
   verifierUrl: https://github.com/Dstack-TEE/dstack/releases/tag/verifier-v0.5.4
+  ownedBy: "Primus Labs"
   modelInfo:
-    name: "OpenAI ChatGPT-5.4"
-    description: OpenAI ChatGPT-5.4
+    name: "openai/gpt-5.4-mini"
+    description: "You can use the `verifyAttestation` method in the Primus zktls core SDK to verify whether the response truly originates from the model. For verification methods, please refer to this link: https://docs.primuslabs.xyz/enterprise/core-sdk/simpleexample#implementation."
     contextLength: 131072
     maxCompletionTokens: 4096
     architecture:
@@ -33,7 +34,7 @@ service:
       inputModalities: [text]
       outputModalities: [text]
       instructType: chatml
-      tokenizer: "llama3"
+      tokenizer: "o200k_base"
     supportedParameters:
       - temperature
       - top_p

@@ -15,7 +15,8 @@ services:
     environment:
       - PORT=8080
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_API_BASE=${OPENAI_API_BASE}
+      - OPENAI_API_BASE=https://api.openai.com/v1
+      - UPSTREAM_MODEL=gpt-5.4-mini
       - ZKTLS_APP_ID=${ZKTLS_APP_ID}
       - ZKTLS_APP_SECRET=${ZKTLS_APP_SECRET}
       - PRIMUS_MPC_URL=wss://1d209ed94824fb11dd2afb0cda71efa49e80d7fc-8081.dstack-pha-prod9.phala.network
