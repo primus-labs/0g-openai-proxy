@@ -1,0 +1,143 @@
+services:
+  config-init:
+    image: alpine:3.18
+    environment:
+      - BROKER_CONFIG=${BROKER_CONFIG}
+    volumes:
+      - broker-config:/out/config
+    command: sh -c 'echo "$$BROKER_CONFIG" | base64 -d > /out/config/config.yaml && echo "Broker config written"'
+    networks:
+      - default
+  openai-proxy:
+    image: primuslabs/openai-proxy@sha256:869b3f69b2e61ef1b53ba13009577e222a2da71732ef5e2600d7a96dfed0a1be
+    ports:
+      - "8080"
+    environment:
+      - PORT=8080
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_BASE=${OPENAI_API_BASE}
+      - ZKTLS_APP_ID=${ZKTLS_APP_ID}
+      - ZKTLS_APP_SECRET=${ZKTLS_APP_SECRET}
+      - PRIMUS_MPC_URL=wss://1d209ed94824fb11dd2afb0cda71efa49e80d7fc-8081.dstack-pha-prod9.phala.network
+      - PRIMUS_PROXY_URL=wss://1d209ed94824fb11dd2afb0cda71efa49e80d7fc-8082.dstack-pha-prod9.phala.network
+      - PROXY_URL=wss://1d209ed94824fb11dd2afb0cda71efa49e80d7fc-8083.dstack-pha-prod9.phala.network
+    networks:
+      - default
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306"
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=123456
+      - MYSQL_DATABASE=provider
+      - MYSQL_USER=provider
+      - MYSQL_PASSWORD=provider
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -uroot -p123456 -e 'USE provider'"]
+      interval: 15s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
+    networks:
+      - default
+
+  # Main broker service
+  0g-serving-provider-broker:
+    image: ghcr.io/0gfoundation/0g-serving-broker@sha256:ef8cc99c587e2bda7852b3c46ded36eff6169d6e3bea8a2f90cd3eceb4c5a267
+    ports:
+      - "80:3080"
+    environment:
+      - PORT=3080
+      - CONFIG_FILE=/config/config.yaml
+      - NETWORK=phala
+    volumes:
+      - broker-config:/config:ro
+      - ./logs/broker:/var/log/inference
+      - ./logs/event:/var/log/event
+      - /var/run/dstack.sock:/var/run/dstack.sock
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: 0g-inference-server
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "test -L /proc/1/exe && readlink /proc/1/exe | grep -q broker"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      config-init:
+        condition: service_completed_successfully
+
+  # Event service starts after broker is ready
+  0g-serving-provider-event:
+    image: ghcr.io/0gfoundation/0g-serving-broker@sha256:ef8cc99c587e2bda7852b3c46ded36eff6169d6e3bea8a2f90cd3eceb4c5a267
+    environment:
+      - CONFIG_FILE=/config/config.yaml
+      - NETWORK=phala
+    volumes:
+      - broker-config:/config:ro
+      - ./logs/event:/var/log/inference
+      - /var/run/dstack.sock:/var/run/dstack.sock
+    command: 0g-inference-event
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q '0g-inference-event' /proc/1/cmdline"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    restart: unless-stopped
+    depends_on:
+      0g-serving-provider-broker:
+        condition: service_healthy
+  0g-controller:
+    image: ghcr.io/0gfoundation/0g-serving-broker@sha256:ef8cc99c587e2bda7852b3c46ded36eff6169d6e3bea8a2f90cd3eceb4c5a267
+    ports:
+      - "3090:3090"
+    environment:
+      - PORT=3090
+      - CONFIG_FILE=/config/config.yaml
+    volumes:
+      - broker-config:/config:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: 0g-controller
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q '0g-controller' /proc/1/cmdline"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    depends_on:
+      0g-serving-provider-broker:
+        condition: service_healthy
+volumes:
+  mysql-data:
+  broker-config:
+  keystore:
+  dind-storage:
+
+networks:
+  default:
+    name: 0g-prvider-network
+    external: false

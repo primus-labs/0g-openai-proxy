@@ -14,7 +14,7 @@ interval:
   settlementProcessor: 300
 service:
   servingUrl: https://fe354a5e9d577f8fc6916a320026f9ec62ec9cda-80.dstack-pha-prod5.phala.network
-  targetUrl: http://openai-proxy-client:8080
+  targetUrl: http://openai-proxy:8080
   inputPrice: 900000000000
   outputPrice: 150000000000
   type: chatbot
@@ -23,6 +23,23 @@ service:
   targetTeeAddress: 0xb8f026D941A59Ffb7ADaeD3e52d0c3404966f275
   targetSeparated: false
   verifierUrl: https://github.com/Dstack-TEE/dstack/releases/tag/verifier-v0.5.4
+  modelInfo:
+    name: "OpenAI ChatGPT-5.4"
+    description: OpenAI ChatGPT-5.4
+    contextLength: 131072
+    maxCompletionTokens: 4096
+    architecture:
+      modality: text->text
+      inputModalities: [text]
+      outputModalities: [text]
+      instructType: chatml
+      tokenizer: "llama3"
+    supportedParameters:
+      - temperature
+      - top_p
+      - top_k
+      - max_tokens
+    supportedFormats: [openai]
 networks:
   ethereum0g:
     url: https://evmrpc.0g.ai
