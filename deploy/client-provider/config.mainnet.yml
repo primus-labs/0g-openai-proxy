@@ -15,8 +15,8 @@ interval:
 service:
   servingUrl: https://5259ae0f38365b27c0bab6301b73691206e32dce-80.dstack-pha-prod5.phala.network
   targetUrl: http://openai-proxy:8080
-  inputPrice: 1600000000000000000
-  outputPrice: 9000000000000000000
+  inputPrice: 1600000000000
+  outputPrice: 9000000000000
   type: chatbot
   model: openai/gpt-5.4-mini
   verifiability: TeeML
