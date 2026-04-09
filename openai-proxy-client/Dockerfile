@@ -1,10 +1,18 @@
-# Debian/glibc (not Alpine/musl): fewer WASM/TLS edge cases; optional native build tools if SDK supports your distro.
-FROM node:20-bookworm-slim
+# Ubuntu base is required here because @primuslabs/zktls-core-sdk only attempts
+# native addon build on macOS arm64 or Linux distributions with ID=ubuntu.
+FROM ubuntu:22.04
 
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ \
+  && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+  && mkdir -p /etc/apt/keyrings \
+  && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+  && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends nodejs python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
