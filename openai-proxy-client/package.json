@@ -5,7 +5,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node test/test.js"
+    "test": "node test/test.js",
+    "test:concurrency": "node test/concurrency.js",
+    "test:concurrency:high": "CONCURRENCY=4 REQUESTS=12 node test/concurrency.js"
   },
   "keywords": [
     "openai",
