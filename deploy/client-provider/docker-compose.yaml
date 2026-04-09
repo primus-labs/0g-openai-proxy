@@ -9,7 +9,7 @@ services:
     networks:
       - default
   openai-proxy:
-    image: primuslabs/openai-proxy@sha256:869b3f69b2e61ef1b53ba13009577e222a2da71732ef5e2600d7a96dfed0a1be
+    image: primuslabs/openai-proxy@sha256:7aaab855861306ad17807d01444960268fa3423258eac9c09d721fc4dea52ffc
     ports:
       - "8080"
     environment:
@@ -22,6 +22,8 @@ services:
       - PRIMUS_MPC_URL=wss://1d209ed94824fb11dd2afb0cda71efa49e80d7fc-8081.dstack-pha-prod9.phala.network
       - PRIMUS_PROXY_URL=wss://1d209ed94824fb11dd2afb0cda71efa49e80d7fc-8082.dstack-pha-prod9.phala.network
       - PROXY_URL=wss://1d209ed94824fb11dd2afb0cda71efa49e80d7fc-8083.dstack-pha-prod9.phala.network
+      - ZKTLS_MIN_WORKERS=${ZKTLS_MIN_WORKERS:-8}
+      - ZKTLS_MAX_WORKERS=${ZKTLS_MAX_WORKERS:-32}
     networks:
       - default
   mysql:

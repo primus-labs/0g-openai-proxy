@@ -13,14 +13,14 @@ interval:
   forceSettlementProcessor: 600
   settlementProcessor: 300
 service:
-  servingUrl: https://fe354a5e9d577f8fc6916a320026f9ec62ec9cda-80.dstack-pha-prod5.phala.network
+  servingUrl: https://5259ae0f38365b27c0bab6301b73691206e32dce-80.dstack-pha-prod5.phala.network
   targetUrl: http://openai-proxy:8080
-  inputPrice: 900000000000
-  outputPrice: 150000000000
+  inputPrice: 1600000000000000000
+  outputPrice: 9000000000000000000
   type: chatbot
-  model: qwen/qwen-2.5-7b-instruct
+  model: openai/gpt-5.4-mini
   verifiability: TeeML
-  targetTeeAddress: 0xb8f026D941A59Ffb7ADaeD3e52d0c3404966f275
+  targetTeeAddress: 0x25F8f01cA76060ea40895472b1b79f76613Ca497
   targetSeparated: false
   verifierUrl: https://github.com/Dstack-TEE/dstack/releases/tag/verifier-v0.5.4
   ownedBy: "Primus Labs"
@@ -64,5 +64,5 @@ logPaths:
 controller:
   enable: true
   adminAddresses:
-    - 0xb8f026D941A59Ffb7ADaeD3e52d0c3404966f275
+    - 0x25F8f01cA76060ea40895472b1b79f76613Ca497
   image: ghcr.io/0gfoundation/0g-serving-broker@sha256:6c0cea3093b8cfa27a15002351b7d819dc2f648ef9f3be0c5d2a2e1f7582c818
