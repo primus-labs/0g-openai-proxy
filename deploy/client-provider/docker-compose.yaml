@@ -9,7 +9,7 @@ services:
     networks:
       - default
   openai-proxy:
-    image: primuslabs/openai-proxy@sha256:7aaab855861306ad17807d01444960268fa3423258eac9c09d721fc4dea52ffc
+    image: primuslabs/openai-proxy@sha256:b24e8a122bc255881ace441e9d2c301091007a9cdc10a33a71eee03a81cc721d
     ports:
       - "8080"
     environment:
