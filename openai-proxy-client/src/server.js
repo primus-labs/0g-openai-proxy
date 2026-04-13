@@ -195,6 +195,7 @@ function writeChatCompletionAsSse(res, completionJson, attestation) {
       ? choice0.message.content
       : '';
   const finishReason = (choice0 && choice0.finish_reason) || 'stop';
+  const serializedAttestation = serializeAttestation(attestation);
   const base = {
     id: completionJson.id,
     object: 'chat.completion.chunk',
@@ -224,29 +225,24 @@ function writeChatCompletionAsSse(res, completionJson, attestation) {
     ...base,
     choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
   };
-  res.write(`data: ${JSON.stringify(chunk2)}\n\n`);
 
   if (completionJson.usage) {
+    res.write(`data: ${JSON.stringify(chunk2)}\n\n`);
+
     const usageChunk = {
       ...base,
       choices: [],
       usage: completionJson.usage,
+      attestation: serializedAttestation,
     };
     res.write(`data: ${JSON.stringify(usageChunk)}\n\n`);
+  } else {
+    const finalChunk = {
+      ...chunk2,
+      attestation: serializedAttestation,
+    };
+    res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
   }
-
-  // zkTLS proof as an OpenAI-shaped chunk (clients that only handle chat.completion.chunk).
-  // `usage` stays {} per wire shape; attestation is a sibling field (empty usage cannot carry it).
-  const proofChunk = {
-    id: completionJson.id,
-    object: 'chat.completion.chunk',
-    created: completionJson.created,
-    model: completionJson.model,
-    choices: [],
-    usage: {},
-    attestation: serializeAttestation(attestation),
-  };
-  res.write(`data: ${JSON.stringify(proofChunk)}\n\n`);
 
   res.write('data: [DONE]\n\n');
   res.end();

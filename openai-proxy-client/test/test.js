@@ -142,7 +142,8 @@ async function testChatCompletionsStream() {
       let hasData = false;
       let hasDone = false;
       let modelWasRestored = false;
-      let hasAttestationChunk = false;
+      let finalEventHasAttestation = false;
+      let lastJsonEvent = null;
 
       res.on('data', (chunk) => {
         const text = chunk.toString();
@@ -155,24 +156,13 @@ async function testChatCompletionsStream() {
           if (line.startsWith('data: ') && !line.includes('[DONE]')) {
             try {
               const json = JSON.parse(line.slice(6));
+              lastJsonEvent = json;
               if (
                 json.object === 'chat.completion.chunk' &&
                 typeof json.model === 'string' &&
                 json.model === testModel
               ) {
                 modelWasRestored = true;
-              }
-              if (
-                json.object === 'chat.completion.chunk' &&
-                Array.isArray(json.choices) &&
-                json.choices.length === 0 &&
-                json.usage &&
-                typeof json.usage === 'object' &&
-                Object.keys(json.usage).length === 0 &&
-                json.attestation &&
-                typeof json.attestation === 'object'
-              ) {
-                hasAttestationChunk = true;
               }
             } catch (e) {
               // ignore
@@ -182,18 +172,24 @@ async function testChatCompletionsStream() {
       });
 
       res.on('end', () => {
+        finalEventHasAttestation =
+          !!lastJsonEvent &&
+          lastJsonEvent.object === 'chat.completion.chunk' &&
+          !!lastJsonEvent.attestation &&
+          typeof lastJsonEvent.attestation === 'object';
+
         console.log(`Received ${chunks} chunks`);
         console.log(`Has data events: ${hasData}`);
         console.log(`Has [DONE]: ${hasDone}`);
         console.log(`Model restored in SSE chunks: ${modelWasRestored ? 'Yes' : 'No'}`);
-        console.log(`Has attestation SSE chunk: ${hasAttestationChunk ? 'Yes' : 'No'}`);
+        console.log(`Final SSE event has attestation: ${finalEventHasAttestation ? 'Yes' : 'No'}`);
         resolve(
           res.statusCode === 200 &&
             isStream &&
             hasData &&
             hasDone &&
             modelWasRestored &&
-            hasAttestationChunk,
+            finalEventHasAttestation,
         );
       });
     });
